@@ -12,7 +12,7 @@
 #define DIO0    26
 
 // VARIABLE CLAU: Canvia a 'true' en una placa i 'false' en l'altra
-bool esEmissor = false; 
+bool esEmissor = true; 
 
 void setup() {
   Serial.begin(115200);
@@ -34,7 +34,7 @@ void loop() {
     // CODI EMISSOR
     Serial.print("Enviant paquet...");
     LoRa.beginPacket();
-    LoRa.print("Hola");
+    LoRa.print("Smiley Face");
     LoRa.endPacket();
     delay(2000); 
   } else {
