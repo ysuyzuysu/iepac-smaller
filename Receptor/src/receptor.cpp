@@ -1,12 +1,10 @@
-// Llibreries necessàries per al projecte.
 #include <Arduino.h>
 #include <SPI.h>
 #include <LoRa.h>
 #include <WiFi.h>
+#include <PubSubClient.h>
 
-
-
-// Definició de pins per a la TTGO T-Beam v1.0/1.1
+// Pins LoRa per a la TTGO T-Beam
 #define SCK     5
 #define MISO    19
 #define MOSI    27
@@ -14,59 +12,78 @@
 #define RST     23
 #define DIO0    26
 
+// Configuració WiFi
+const char* ssid = "Aula 23";
+const char* password = "223AuLa23";
 
+// Configuració MQTT
+const char* mqtt_server = "192.168.223.50";
+const int mqtt_port = 1883;
+const char* mqtt_topic = "ado/pot"; // Subtopic actualitzat
 
-// CREDENCIALS WIFI DE L'AULA
-const char* ssid = "Aula 23";       
-const char* password = "223AuLa23"; 
+WiFiClient espClient;
+PubSubClient client(espClient);
 
-bool esEmissor = false; 
+void reconnect() {
+  while (!client.connected()) {
+    Serial.print("Intentant connexió MQTT al subtopic 'ado/pot'...");
+    // Intentem connectar
+    if (client.connect("TBeam_Receptor_ADO")) {
+      Serial.println("Connectat!");
+    } else {
+      Serial.print("Error, rc=");
+      Serial.print(client.state());
+      Serial.println(" Reintentant en 5 segons...");
+      delay(5000);
+    }
+  }
+}
 
 void setup() {
-  // Aquesta velocitat ha de coincidir amb el monitor_speed del platformio.ini
   Serial.begin(115200);
-  delay(1000); // Pausa per donar temps a la terminal a obrir-se
-
-  Serial.println("\n--- INICIANT RECEPTOR T-BEAM ---");
-
-  // 1. Connexió WiFi
-  Serial.print("Intentant connectar a: ");
-  Serial.println(ssid);
   
+  // 1. Connectar WiFi
   WiFi.begin(ssid, password);
-
-  // Esperem la connexió
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    Serial.print("."); // Això sortirà a la terminal 
+    Serial.print(".");
   }
-  // Un cop connectat, mostrem la informació a la terminal.
-  Serial.println("\n[WIFI] Connectat correctament!");
-  Serial.print("[WIFI] Adreça IP: ");
-  Serial.println(WiFi.localIP()); 
-  Serial.println("---------------------------------");
+  Serial.println("\nWiFi OK. IP: " + WiFi.localIP().toString());
 
-  // 2. Configuració LoRa
+  // 2. Configurar servidor MQTT
+  client.setServer(mqtt_server, mqtt_port);
+
+  // 3. Configurar LoRa
   SPI.begin(SCK, MISO, MOSI, SS);
   LoRa.setPins(SS, RST, DIO0);
-
   if (!LoRa.begin(868E6)) {
-    Serial.println("[LORA] Error: No s'ha trobat el xip LoRa.");
+    Serial.println("Error LoRa!");
     while (1);
   }
-  Serial.println("[LORA] Escoltant missatges de l'emissor...");
+  Serial.println("Escoltant LoRa i preparat per publicar a 'ado/pot'...");
 }
 
 void loop() {
-  // Escoltant paquets via ràdio
+  if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+
+  // Escoltant ràdio LoRa
   int packetSize = LoRa.parsePacket();
   if (packetSize) {
-    Serial.print(">>> NOU MISSATGE REBUT: ");
+    String message = "";
     while (LoRa.available()) {
-      Serial.print((char)LoRa.read());
+      message += (char)LoRa.read();
     }
-    Serial.print(" (RSSI: ");
-    Serial.print(LoRa.packetRssi()); // Opcional: mostra la potència del senyal
-    Serial.println(" dBm)");
+
+    Serial.println("Rebut via LoRa: " + message);
+
+    // Publicar al subtopic 'ado/pot'
+    if (client.publish(mqtt_topic, message.c_str())) {
+      Serial.println("Dades publicades a 'ado/pot' correctament.");
+    } else {
+      Serial.println("Error en publicar a MQTT.");
+    }
   }
 }
